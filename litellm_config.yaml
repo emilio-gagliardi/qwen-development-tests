@@ -1,48 +1,55 @@
-# LiteLLM Proxy Configuration
-# This file configures the LiteLLM proxy server
+# LiteLLM Proxy Configuration with Langfuse Observability
+# This config is mounted into the LiteLLM proxy container
 
 model_list:
-  # Fast tier - for simple queries
-  - model_name: gpt-3.5-turbo
+  # Fast/Cheap tier for simple queries
+  - model_name: fast-model
     litellm_params:
-      model: openai/gpt-3.5-turbo
+      model: openai/gpt-4o-mini
       api_key: os.environ/OPENAI_API_KEY
-      
-  # Balanced tier - for moderate complexity
-  - model_name: gpt-4
-    litellm_params:
-      model: openai/gpt-4
-      api_key: os.environ/OPENAI_API_KEY
-      
-  # Advanced tier - for complex/nuanced queries
-  - model_name: gpt-4-turbo
+      timeout: 30
+      rpm: 100
+      tpm: 50000
+  
+  # Balanced tier for general queries  
+  - model_name: balanced-model
     litellm_params:
       model: openai/gpt-4-turbo
       api_key: os.environ/OPENAI_API_KEY
+      timeout: 60
+      rpm: 50
+      tpm: 80000
   
-  # Alternative providers (uncomment and configure as needed)
-  # - model_name: claude-3-sonnet
-  #   litellm_params:
-  #     model: anthropic/claude-3-sonnet-20240229
-  #     api_key: os.environ/ANTHROPIC_API_KEY
-  
-  # - model_name: gemini-pro
-  #   litellm_params:
-  #     model: gemini/gemini-pro
-  #     api_key: os.environ/GEMINI_API_KEY
+  # Advanced tier for complex reasoning
+  - model_name: advanced-model
+    litellm_params:
+      model: anthropic/claude-3-opus-20240229
+      api_key: os.environ/ANTHROPIC_API_KEY
+      timeout: 120
+      rpm: 20
+      tpm: 100000
+
+# Router configuration for load balancing and fallbacks
+router_settings:
+  routing_strategy: simple-shuffle
+  set_verbose: true
+  fallbacks: [
+    {"advanced-model": ["balanced-model"]},
+    {"balanced-model": ["fast-model"]}
+  ]
+  allowed_fails: 3
+  cooldown_time: 60
 
 # General settings
 general_settings:
   master_key: sk-1234  # Change in production!
+  database_url: "sqlite:///proxy.db"  # For tracking usage
   
-  # Enable logging
-  enable_logging: true
-  
-  # Request timeout
-  request_timeout: 600
-
-# Router configuration (optional - for load balancing across multiple keys)
-router_settings:
-  routing_strategy: simple-shuffle
-  num_retries: 2
-  retry_after: 5
+# Langfuse Integration for Observability
+# All token usage, costs, and traces will be logged to Langfuse
+litellm_settings:
+  callbacks:
+    - langfuse
+  langfuse_public_key: os.environ/LANGFUSE_PUBLIC_KEY
+  langfuse_secret_key: os.environ/LANGFUSE_SECRET_KEY
+  langfuse_host: os.environ/LANGFUSE_HOST
