@@ -20,7 +20,7 @@ services:
 
   # LiteLLM Proxy Server (Sidecar)
   litellm-proxy:
-    image: ghcr.io/berriai/litellm:main-latest
+    image: ghcr.io/berriai/litellm:main-v1.61.0
     ports:
       - "4000:4000"
     volumes:
