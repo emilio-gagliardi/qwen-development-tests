@@ -1,303 +1,153 @@
-# OpenSpec Session Handoff - Proposal 01 Core Architecture
+# Handoff: OpenSpec RAG Pipeline Implementation
 
-## Executive Summary
-This session upscaled OpenSpec Proposal 01 from a basic architecture to a production-scale design capable of handling 1000+ requests/second. The proposal has been comprehensively updated with async-safe patterns, backpressure mechanisms, correlation ID tracking, connection pooling, and explicit error handling via the Result pattern.
+## Session Summary
+This session established the foundational architecture for a LiteLLM-backed RAG pipeline using OpenSpec proposals, with strict adherence to type safety, explicit error handling, and clean architecture principles.
 
-## What We Accomplished
+## ✅ Accomplishments
 
-### 1. Proposal Documentation Upscaled
-- **proposal.md**: Enhanced with production-scale requirements including:
-  - Explicit problem statements for race conditions, backpressure, correlation IDs, connection pooling, silent failures, and route timeouts
-  - Hybrid backpressure strategy (semaphore + token bucket + circuit breaker)
-  - Load testing requirements (1000 req/sec, p99 < 200ms)
-  - Success criteria quantified with metrics
+### 1. OpenSpec Structure Corrected
+- Reorganized all 10 proposals into proper OpenSpec format:
+  - Each proposal has its own folder (`01-core-architecture` through `10-docker-hostinger-deployment`)
+  - Each contains `proposal.md`, `design.md`, `tasks.md`
+  - Each has `specs/` subfolder with domain-grouped specification files
+- All proposals committed to `dev` branch
 
-- **specs/design.md**: Completely rewritten with senior engineer-quality specifications:
-  - Async-safe ConfigSingleton with `asyncio.Lock` and frozen state
-  - BackpressureController with hybrid strategies
-  - CorrelationIdManager using contextvars for async propagation
-  - ConnectionPoolManager with httpx limits and keepalive
-  - Async-safe ServiceRegistry with factory support
-  - All code examples include comprehensive docstrings following Google style
+### 2. Proposal 01 (Core Architecture) Implemented
+- **Branch**: `feature/01-core-architecture` (ready for PR)
+- **Files Created**: 26 new files implementing:
+  - `ConfigSingleton`: Thread-safe configuration management
+  - `ServiceRegistry`: Dependency injection container
+  - Domain entities: `Document`, `Query`, `IntentType`, `ModelTier`, `ConfidenceScore`, `ModelName`
+  - Service protocols: `IntentClassifierProtocol`, `ModelRouterProtocol`, `LLMGatewayProtocol`, `RetrievalProtocol`, `GenerationProtocol`
+  - Exception hierarchy: 21 exception classes organized by domain
+  - Structured logging: JSON logging with correlation IDs and async context support
 
-### 2. Key Architectural Decisions Documented
+### 3. Critical Architecture Decisions Enforced
+- **Pydantic for All Complex Data**: Every data contract uses Pydantic models with strict validation
+- **Result Pattern Over Optional**: 
+  - `Result[T, E] = Union[Success[T], Failure[E]]` replaces `Optional[T]`
+  - No silent `None` returns - failures return `Failure[ErrorDetail]` with full context
+- **Primitive Restriction**: Internal data uses only `int`, `float`, `str` primitives; everything else is a Pydantic model
+- **Immutable Domain**: All entities use `frozen=True` for immutability
+- **Explicit Error Objects**: `ErrorDetail` class captures code, message, context, and timestamp
+- **Async-First Design**: All I/O operations are async with proper context propagation
+- **Anti-Corruption Layer**: Protocols define boundaries between layers
 
-#### Backpressure Strategy
-We selected a **hybrid approach** combining:
-1. **Semaphore-based concurrency limiting** (500 concurrent requests per endpoint)
-2. **Token bucket algorithm** (1000 tokens/second refill rate)
-3. **Bounded queues** (1000 max queue size before rejection)
-4. **Circuit breaker pattern** (trips after 10 failures, 30s timeout)
-5. **Graceful degradation** (503 responses with Retry-After header)
+### 4. Dependency Graph Established
+- **Phase 1**: Core architecture, exceptions, logging, anti-corruption, async patterns
+- **Phase 2**: LiteLLM gateway, intent classifier
+- **Phase 3**: Model router, haystack rerank pipeline
+- **Phase 4**: Docker deployment
+- Clear sequential dependencies mapped for PR ordering
 
-**Rationale**: Single strategies have weaknesses - semaphores don't handle bursts, token buckets don't limit concurrency, queues can grow unbounded. The hybrid approach provides defense in depth.
+### 5. GitHub Workflow Defined
+- Each proposal gets its own feature branch and PR
+- Adversarial code review required before merging to `dev`
+- Review focus areas: leaky abstractions, blocking calls, missing correlation IDs, exception handling, hardcoded secrets
 
-#### Correlation ID Propagation
-- **Mechanism**: Python `contextvars.ContextVar` for async-safe context propagation
-- **Format**: UUIDv4 as string value object
-- **Lifecycle**: Generated at middleware layer, propagated through all async boundaries, included in all logs and Langfuse events
-- **Fallback**: Auto-generates if not provided by client
+## 📚 Key Learnings
 
-#### Connection Pooling
-- **Library**: `httpx.AsyncClient` (native async, better than aiohttp for this use case)
-- **Configuration**: 
-  - max_connections: 100
-  - max_keepalive_connections: 50
-  - keepalive_expiry: 30 seconds
-  - timeout: 30 seconds (cascading: route → service → client)
+### What Worked Well
+1. **OpenSpec Format**: The `proposal.md` → `design.md` → `tasks.md` → `specs/` structure provides excellent traceability
+2. **Result Pattern**: Explicit error handling prevents silent failures and improves debuggability
+3. **Pydantic Enforcement**: Catches data validation errors early with clear error messages
+4. **Correlation IDs**: Essential for tracing requests across async boundaries
+5. **Protocol-Based Design**: Clean separation between layers enables easy mocking and testing
 
-#### Configuration Singleton
-- **Pattern**: Async-safe lazy initialization with `asyncio.Lock`
-- **Immutability**: Frozen via pydantic-settings after initialization
-- **Thread Safety**: Double-checked locking pattern prevents race conditions
-- **Error Handling**: RuntimeError if accessed before initialization
+### Challenges Encountered
+1. **UI Limitations**: No terminal or file system panel available - had to rely on background command execution
+2. **GitHub Authentication**: Required PAT for pushing; couldn't use UI's GitHub integration for git CLI
+3. **OpenSpec Initial Structure**: First attempt had incorrect folder structure; required reorganization
+4. **Balancing Strictness vs Flexibility**: Result pattern adds verbosity but prevents bugs
 
-#### Error Handling
-- **Pattern**: Result[T, E] = Union[Success[T], Failure[E]]
-- **No Silent Failures**: Methods never return None for errors
-- **Error Context**: Failure includes error code, message, timestamp, correlation_id, and optional cause
-- **Exception Hierarchy**: Structured exception classes mapped to error codes
+### Critical Insights
+- **Silent Nulls Are Dangerous**: Returning `None` for errors hides failure modes; `Failure[ErrorDetail]` forces handling
+- **Correlation IDs Must Propagate**: Async contexts require explicit passing of correlation IDs through all layers
+- **Protocols Prevent Coupling**: Defining interfaces before implementation keeps architecture clean
+- **Configuration as Singleton**: Centralized config with validation prevents scattered settings
 
-## What We Learned
+## 🚧 Current State
 
-### Technical Learnings
+### Completed
+- ✅ All 10 OpenSpec proposals structured correctly in `.openspec/proposals/`
+- ✅ Proposal 01 fully implemented in `feature/01-core-architecture` branch
+- ✅ Dependency graph mapped
+- ✅ PR workflow defined
 
-1. **Async Singletons Are Hard**: Standard singleton patterns fail under concurrent async load. Must use `asyncio.Lock` for initialization and avoid mutable state after init.
+### Pending
+- ⏳ PR #1 creation and adversarial review (feature/01-core-architecture → dev)
+- ⏳ Implementation of Proposals 02-10 in sequence
+- ⏳ Integration testing of full pipeline
+- ⏳ Docker deployment to Hostinger VPS
 
-2. **Contextvars Are Essential for Correlation**: Thread-local storage doesn't work in async contexts. `contextvars.ContextVar` is the only safe way to propagate request-scoped data across await points.
+## 📋 Next Steps for Continuing Agent
 
-3. **Backpressure Requires Multiple Layers**: A single mechanism (e.g., just semaphores) creates false confidence. Need layered approach: rate limiting → concurrency limiting → queuing → circuit breaking.
+### Immediate Actions
+1. **Create PR #1**: 
+   - Go to GitHub repo
+   - Create PR from `feature/01-core-architecture` → `dev`
+   - Title: "feat: Implement Core Architecture (Proposal 01)"
+   - Link to this handoff.md
 
-4. **Connection Pools Prevent Cascading Failures**: Without pooling, socket exhaustion occurs quickly under load, causing downstream failures that cascade through the system.
+2. **Conduct Adversarial Review** of PR #1 focusing on:
+   - Are there any `Optional` returns that should be `Result`?
+   - Do all log statements include `correlation_id`?
+   - Are all exceptions caught and converted to `Failure`?
+   - Is `ConfigSingleton` truly thread-safe?
+   - Are protocols too specific or too generic?
 
-5. **Result Pattern Improves Type Safety**: Explicit Success/Failure returns force callers to handle errors, eliminating entire classes of bugs from unhandled exceptions or None checks.
+3. **Merge PR #1** after approval
 
-### Process Learnings
-
-1. **OpenSpec Structure Works**: Separating proposal.md (what/why), design.md (how), tasks.md (action items), and specs/ (domain details) creates clear separation of concerns.
-
-2. **Adversarial Review Before Implementation**: Identifying gaps in the proposal phase prevents costly refactors after code is written.
-
-3. **Load Testing Requirements Must Be Explicit**: "Handles high load" is meaningless without specific metrics (req/sec, latency percentiles, error rates).
-
-## Current State
-
-### Files Modified
+### Subsequent Proposals
+Follow the dependency order:
 ```
-.openspec/proposals/01-core-architecture/
-├── proposal.md          ✅ Updated with production-scale requirements
-├── tasks.md             ⏳ Needs update with new tasks
-└── specs/
-    └── design.md        ✅ Completely rewritten with async-safe patterns
-```
-
-### Branch Status
-- **Current Branch**: `feature/01-core-architecture-v2`
-- **Base Branch**: `dev`
-- **Status**: Ready for implementation (design complete)
-- **Commits**: Design documentation updated, code implementation pending
-
-## Next Steps for Continuation
-
-### Immediate Actions (Priority 1)
-
-1. **Update tasks.md** with new implementation tasks:
-   - Create async-safe ConfigSingleton
-   - Implement BackpressureController
-   - Build CorrelationIdManager with middleware integration
-   - Create ConnectionPoolManager
-   - Update ServiceRegistry for async safety
-   - Implement Result pattern types
-   - Add structured logging with correlation IDs
-
-2. **Implement Core Infrastructure** (in order):
-   ```bash
-   # Create directory structure
-   mkdir -p app/{domain/{entities,value_objects,protocols},application/{use_cases,dtos},infrastructure/{repositories,external,pooling},presentation/{controllers,middleware},core}
-   
-   # Implement in priority order:
-   1. app/core/result.py           # Result pattern types
-   2. app/core/correlation.py      # CorrelationIdManager
-   3. app/core/config.py           # Async-safe ConfigSingleton
-   4. app/core/backpressure.py     # BackpressureController
-   5. app/core/pooling.py          # ConnectionPoolManager
-   6. app/core/registry.py         # Async-safe ServiceRegistry
-   7. app/core/logging.py          # Structured JSON logging
-   8. app/domain/protocols/        # Interface definitions
-   9. app/presentation/middleware/ # Correlation ID, timeout, backpressure middleware
-   ```
-
-3. **Write Unit Tests** for each component:
-   - Test async safety under concurrent load (use asyncio.gather with 1000 concurrent calls)
-   - Test backpressure activation thresholds
-   - Test correlation ID propagation across async boundaries
-   - Test connection pool exhaustion and recovery
-
-4. **Integration Test** with load testing:
-   - Use locust or k6 to verify 1000 req/sec
-   - Measure p50, p95, p99 latency
-   - Verify backpressure activates correctly
-   - Check for memory leaks over 10-minute sustained load
-
-### Medium Priority (Priority 2)
-
-5. **Implement Domain Layer**:
-   - Entities with frozen=True
-   - Value objects with validation
-   - Protocol definitions for repositories and services
-
-6. **Implement Application Layer**:
-   - Use cases with Result pattern returns
-   - DTOs for inter-layer communication
-   - Validators with explicit error types
-
-### Lower Priority (Priority 3)
-
-7. **Implement Infrastructure Layer**:
-   - Repository implementations
-   - External service clients (LiteLLM gateway stub)
-   - Message bus with backpressure awareness
-
-8. **Implement Presentation Layer**:
-   - FastAPI application factory
-   - Controllers with proper error handling
-   - Schemas with strict validation
-
-## Code Quality Standards
-
-All implementation must follow these standards:
-
-### Docstring Format (Google Style)
-```python
-def method_name(param1: str, param2: int) -> Result[str, ErrorDetail]:
-    """
-    One-line summary of what the method does.
-    
-    Extended description if needed, explaining why and any side effects.
-    
-    Args:
-        param1: Description of param1 including valid ranges/constraints
-        param2: Description of param2 including units if applicable
-    
-    Returns:
-        Success containing result description, or Failure with error context
-    
-    Raises:
-        SpecificExceptionType: When and why this exception is raised
-    
-    Example:
-        >>> result = await method_name("value", 42)
-        >>> if isinstance(result, Success):
-        ...     print(result.value)
-    """
+PR #1: Core Architecture (DONE - awaiting review)
+PR #2: Exception Hierarchy (refinement if needed)
+PR #3: Structured Logging (integration tests)
+PR #4: Anti-Corruption Layer (adapters)
+PR #5: Async Patterns (concurrency controls)
+PR #6: LiteLLM Gateway (OpenRouter integration)
+PR #7: Intent Classifier (6 intent types)
+PR #8: Model Router (3-tier routing)
+PR #9: Haystack Rerank Pipeline
+PR #10: Docker Deployment (Hostinger VPS)
 ```
 
-### Type Hints
-- Full type annotations on all parameters and return values
-- Use `Optional[T]` only for truly optional values (prefer Result pattern)
-- Use `Union[Success[T], Failure[E]]` or custom `Result[T, E]` type alias
-- Generic type parameters for reusable components
+### Code Quality Checklist for Each PR
+- [ ] All complex data uses Pydantic models
+- [ ] No `Optional` returns for error cases (use `Result`)
+- [ ] All async functions have `await` properly handled
+- [ ] Correlation IDs propagated through all layers
+- [ ] Exceptions caught and converted to `Failure`
+- [ ] No hardcoded secrets (use ConfigSingleton)
+- [ ] Interfaces defined before implementation
+- [ ] Unit tests for happy path and error paths
+- [ ] Structured logs with correlation IDs
 
-### Async Best Practices
-- All I/O operations must be async (no blocking calls)
-- Use `asyncio.Lock` for shared mutable state
-- Propagate contextvars across all await points
-- Implement proper cancellation handling with `try/finally`
-- Use `asyncio.wait_for()` for timeout enforcement
+## 🔗 Repository Links
+- **Main Repo**: https://github.com/emilio-gagliardi/qwen-development-tests
+- **Dev Branch**: https://github.com/emilio-gagliardi/qwen-development-tests/tree/dev
+- **Feature Branch (PR #1)**: https://github.com/emilio-gagliardi/qwen-development-tests/tree/feature/01-core-architecture
+- **OpenSpec Proposals**: https://github.com/emilio-gagliardi/qwen-development-tests/tree/dev/.openspec/proposals
 
-### Error Handling
-- Never raise exceptions for expected failures - return Failure[E]
-- Include correlation_id in all error contexts
-- Log errors with full stack traces at ERROR level
-- Return actionable error messages to API consumers
+## 🛠️ Technical Stack Recap
+- **Language**: Python 3.11+
+- **Validation**: Pydantic v2
+- **Web Framework**: FastAPI
+- **RAG Framework**: Haystack 2.x
+- **LLM Gateway**: LiteLLM Proxy (standalone)
+- **Model Provider**: OpenRouter (DeepSeek, Llama 3.3)
+- **Observability**: Langfuse (integrated at LiteLLM proxy)
+- **Deployment**: Docker Compose on Hostinger VPS
+- **Pattern**: Result<T, E> for error handling
 
-## Testing Strategy
-
-### Unit Tests
-```python
-import pytest
-import asyncio
-
-@pytest.mark.asyncio
-async def test_backpressure_activates_under_load():
-    """Verify backpressure activates when concurrent requests exceed threshold."""
-    config = BackpressureConfig(max_concurrent_requests=10)
-    controller = BackpressureController(config)
-    await controller.start()
-    
-    # Attempt 100 concurrent acquisitions
-    tasks = [controller.acquire() for _ in range(100)]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    # Verify some were rejected
-    rejections = sum(1 for r in results if isinstance(r, RateLimitExceededError))
-    assert rejections > 0, "Backpressure should reject excess requests"
-    
-    await controller.stop()
-```
-
-### Load Tests
-```python
-# locustfile.py
-from locust import HttpUser, task, between
-
-class RAGUser(HttpUser):
-    wait_time = between(0.1, 0.5)
-    
-    @task
-    def query(self):
-        self.client.post("/rag/query", json={
-            "query": "test question",
-            "correlation_id": str(uuid.uuid4())
-        })
-```
-
-Run with: `locust -f locustfile.py --host=http://localhost:8000 --users 1000 --spawn-rate 100`
-
-## Risks & Mitigations
-
-| Risk | Severity | Mitigation |
-|------|----------|------------|
-| Over-engineering for current scale | Medium | Start with minimal viable implementation, add complexity only when load tests prove need |
-| Performance overhead from locks | Low | Profile critical paths, optimize lock granularity if p99 exceeds targets |
-| Contextvar leakage between requests | Medium | Clear contextvars in middleware finally blocks, add tests for isolation |
-| Connection pool starvation | High | Monitor pool utilization, implement circuit breakers, add alerting |
-| Incorrect backpressure thresholds | Medium | Start conservative, tune based on load test results and production metrics |
-
-## Dependencies for Next Proposals
-
-Proposal 01 must be fully implemented and tested before proceeding to:
-
-- **Proposal 02 (Exception Hierarchy)**: Depends on Result pattern from Proposal 01
-- **Proposal 03 (Structured Logging)**: Depends on CorrelationIdManager from Proposal 01
-- **Proposal 06 (LiteLLM Gateway)**: Depends on ConnectionPoolManager from Proposal 01
-- **Proposal 10 (Docker Deployment)**: Depends on all infrastructure components
-
-Proposals 04 (Anti-Corruption Layer) and 05 (Async Patterns) can proceed in parallel once core infrastructure (config, registry, result types) is complete.
-
-## Success Metrics for This Proposal
-
-Implementation is complete when:
-
-- [ ] All components pass unit tests with >90% coverage
-- [ ] Load test achieves 1000 req/sec sustained for 10 minutes
-- [ ] p50 latency < 50ms, p99 latency < 200ms (architecture overhead only)
-- [ ] Error rate < 0.1% under normal load
-- [ ] Backpressure activates gracefully at configured thresholds
-- [ ] Zero memory leaks over extended load testing
-- [ ] All correlation IDs traceable end-to-end in logs
-- [ ] No blocking calls detected via profiling
-- [ ] All docstrings follow Google style with examples
-- [ ] Adversarial code review completed with zero critical findings
-
-## Contact Points
-
-For questions about this implementation:
-- **Architecture decisions**: See proposal.md and design.md
-- **Backpressure tuning**: Adjust BackpressureConfig defaults based on load test results
-- **Correlation ID format**: UUIDv4, immutable, propagated via contextvars
-- **Error handling pattern**: Result[T, E] with explicit Success/Failure
+## ⚠️ Gotchas to Watch For
+1. **LiteLLM Proxy URL**: App must use `http://litellm-proxy:4000` in Docker, `http://localhost:4000` locally
+2. **OpenRouter API Key**: Store in `.env`, never commit
+3. **Correlation ID Context**: Use `contextvars` for async propagation
+4. **Haystack Document Store**: In-memory for now, switch to persistent for production
+5. **Reranker Model**: Use small cross-encoder for speed/cost balance
 
 ---
-
-*Generated: End of Session 1 | Next Session: Implement core infrastructure components*
+*Generated: End of Session 1*
+*Next Agent: Continue with PR #1 review and Proposal 02 implementation*
