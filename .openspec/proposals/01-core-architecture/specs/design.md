@@ -1,30 +1,49 @@
 # Design Specification
 
+## Design Principles
+
+### 1. Result Pattern for Error Handling
+- Methods NEVER return `None` to indicate failure
+- All methods return `Result[T, E]` where `E` extends `ErrorDetail`
+- Forces explicit error handling at call sites
+- Prevents silent failures and null pointer exceptions
+
+### 2. Pydantic Schema Enforcement
+- All complex data structures MUST be Pydantic models
+- Primitives (`int`, `float`, `str`) only for simple values
+- Immutable models (`frozen=True`) for domain entities
+- Automatic validation on instantiation
+
+### 3. Anti-Corruption Boundaries
+- External data transformed to domain models immediately
+- Domain models never exposed directly to external layers
+- DTOs used for inter-layer communication
+
 ## Architecture Layers
 
 ### Domain Layer
 The domain layer contains core business logic that is independent of external frameworks:
-- **Entities**: `Document`, `Query`, `Intent`, `ModelDecision`
-- **Value Objects**: `ModelTier`, `IntentType`, `ConfidenceScore`
-- **Domain Services**: Pure business logic operations
+- **Entities**: `Document`, `Query`, `Intent`, `ModelDecision` (Immutable Pydantic models)
+- **Value Objects**: `ModelTier`, `IntentType`, `ConfidenceScore` (Immutable Pydantic models)
+- **Domain Services**: Pure business logic operations returning `Result[T, E]`
 
 ### Application Layer
 Orchestrates domain objects to execute use cases:
 - **Use Cases**: `ProcessRAGQuery`, `ClassifyIntent`, `RouteModel`
-- **DTOs**: Data transfer objects for inter-layer communication
-- **Validators**: Business rule validation
+- **DTOs**: Data transfer objects for inter-layer communication (Pydantic models)
+- **Validators**: Business rule validation returning `Result[ValidationSuccess, ValidationError]`
 
 ### Infrastructure Layer
 Implements interfaces defined in domain/application layers:
-- **Repositories**: Document storage abstraction
-- **External Services**: LiteLLM client, Langfuse integration
+- **Repositories**: Document storage abstraction returning `Result[Entity, RepositoryError]`
+- **External Services**: LiteLLM client, Langfuse integration returning `Result[Response, GatewayError]`
 - **Message Bus**: Async event publishing
 
 ### Presentation Layer
 FastAPI-based API endpoints:
-- **Controllers**: Request/response handling
+- **Controllers**: Request/response handling with Pydantic schemas
 - **Middleware**: Authentication, logging, error handling
-- **Schemas**: Pydantic models for API contracts
+- **Schemas**: Pydantic models for API contracts (request/response)
 
 ## Configuration Singleton
 
