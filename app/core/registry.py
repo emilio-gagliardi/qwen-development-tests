@@ -128,9 +128,6 @@ class ServiceRegistry:
         If the service was registered with a factory and hasn't been
         initialized yet, the factory will be called to create it.
         
-        For singleton services (default): creates once and caches.
-        For transient services (singleton=False): creates new instance on every call.
-        
         Args:
             name: Service identifier
             
@@ -139,51 +136,32 @@ class ServiceRegistry:
             
         Raises:
             ServiceNotFoundError: If service is not found
-            ServiceRegistryError: If factory initialization fails
-            
-        Example:
-            >>> # Get singleton service
-            >>> gateway = ServiceRegistry.get('llm_gateway')
-            
-            >>> # Get transient service (new instance each time)
-            >>> classifier1 = ServiceRegistry.get('transient_classifier')
-            >>> classifier2 = ServiceRegistry.get('transient_classifier')
-            >>> assert classifier1 is not classifier2  # Different instances
         """
         if name not in cls._services and name not in cls._factories:
             raise ServiceNotFoundError(f"Service '{name}' not found in registry")
         
-        # Check if this is a factory-based service
-        if name in cls._factories:
+        # Initialize from factory if needed
+        if name in cls._factories and not cls._initialized.get(name, False):
             is_singleton = cls._services.get(f"{name}__singleton", True)
             
-            # For singleton: create once and cache
-            if is_singleton:
-                if not cls._initialized.get(name, False):
-                    try:
-                        logger.debug(f"Initializing singleton service from factory: {name}")
-                        instance = cls._factories[name]()
-                        cls._services[name] = instance
-                        cls._initialized[name] = True
-                    except Exception as e:
-                        logger.error(f"Failed to initialize singleton service '{name}': {e}")
-                        raise ServiceRegistryError(
-                            f"Failed to initialize singleton service '{name}': {e}"
-                        ) from e
-                return cls._services[name]
-            
-            # For transient: create new instance on every call
-            else:
-                try:
-                    logger.debug(f"Creating transient service instance: {name}")
-                    return cls._factories[name]()
-                except Exception as e:
-                    logger.error(f"Failed to create transient service '{name}': {e}")
-                    raise ServiceRegistryError(
-                        f"Failed to create transient service '{name}': {e}"
-                    ) from e
+            try:
+                logger.debug(f"Initializing service from factory: {name}")
+                instance = cls._factories[name]()
+                
+                if is_singleton:
+                    cls._services[name] = instance
+                
+                cls._initialized[name] = True
+                
+                if not is_singleton:
+                    return instance
+                    
+            except Exception as e:
+                logger.error(f"Failed to initialize service '{name}': {e}")
+                raise ServiceRegistryError(
+                    f"Failed to initialize service '{name}': {e}"
+                ) from e
         
-        # Return pre-registered singleton instance
         return cls._services.get(name)
     
     @classmethod

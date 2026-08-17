@@ -75,32 +75,9 @@ class ConfidenceScore:
     value: float
     
     def __post_init__(self) -> None:
-        """
-        Validate confidence score after initialization.
-        
-        Ensures the value is:
-        1. A numeric type (int or float)
-        2. Finite (not NaN or infinity)
-        3. Within the valid range [0.0, 1.0]
-        
-        Raises:
-            TypeError: If value is not a number
-            ValueError: If value is not finite or out of range
-            
-        Example:
-            >>> ConfidenceScore(0.85)  # Valid
-            >>> ConfidenceScore(1.5)   # Raises ValueError
-            >>> ConfidenceScore(float('nan'))  # Raises ValueError
-        """
+        """Validate confidence score after initialization."""
         if not isinstance(self.value, (int, float)):
             raise TypeError("Confidence score must be a number")
-        
-        # Check for NaN and infinity (non-finite values)
-        import math
-        if not math.isfinite(self.value):
-            raise ValueError(
-                f"Confidence score must be a finite number, got {self.value}"
-            )
         
         if self.value < 0.0 or self.value > 1.0:
             raise ValueError(

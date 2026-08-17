@@ -35,30 +35,7 @@ class Document:
             self.metadata['source'] = 'unknown'
     
     def update_content(self, new_content: str) -> None:
-        """
-        Update document content with validation.
-        
-        Validates the new content before updating to maintain entity invariants.
-        Updates the timestamp to reflect the modification time.
-        
-        Args:
-            new_content: New content string for the document
-            
-        Raises:
-            ValueError: If new_content is empty or whitespace-only
-            
-        Example:
-            >>> doc = Document(content="Initial content")
-            >>> doc.update_content("Updated content")
-            >>> assert doc.content == "Updated content"
-            
-            >>> # This will raise ValueError
-            >>> doc.update_content("")  # Raises ValueError
-        """
-        # Re-validate content to preserve invariant from __post_init__
-        if not new_content or not new_content.strip():
-            raise ValueError("Document content cannot be empty or whitespace-only")
-        
+        """Update document content and timestamp."""
         self.content = new_content
         self.updated_at = datetime.utcnow()
     

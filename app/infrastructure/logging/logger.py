@@ -85,13 +85,9 @@ class StructuredLogFormatter(logging.Formatter):
         elif hasattr(record, 'correlation_id') and record.correlation_id:
             log_data["correlation_id"] = record.correlation_id
         
-        # Add extra fields from both record and context
+        # Add extra fields
         if self.include_extra:
             extra_fields = self._extract_extra_fields(record)
-            # Merge with context extra fields
-            context_extra = get_extra_fields()
-            if context_extra:
-                extra_fields.update(context_extra)
             if extra_fields:
                 log_data["extra"] = extra_fields
         
@@ -228,30 +224,12 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
-# Context variable for extra fields (thread-safe async context)
-extra_fields_ctx: contextvars.ContextVar[Dict[str, Any]] = contextvars.ContextVar(
-    "extra_fields", 
-    default={}
-)
-
-
-def get_extra_fields() -> Dict[str, Any]:
-    """Get current extra fields from context."""
-    return extra_fields_ctx.get()
-
-
-def set_extra_fields(extra_fields: Dict[str, Any]) -> None:
-    """Set extra fields in current context."""
-    extra_fields_ctx.set(extra_fields)
-
-
 class LogContext:
     """
     Context manager for temporary logging context.
     
     Temporarily sets correlation ID and/or extra fields for the duration
-    of the context. Properly propagates both through async contexts using
-    contextvars.
+    of the context.
     
     Usage:
         with LogContext(correlation_id="req-123"):
@@ -259,9 +237,6 @@ class LogContext:
         
         with LogContext(extra_fields={"user_id": "u-456"}):
             logger.info("User action")
-            
-        with LogContext(correlation_id="req-456", extra_fields={"step": "validation"}):
-            logger.info("Validating data")
     """
     
     def __init__(
@@ -272,34 +247,20 @@ class LogContext:
         self.correlation_id = correlation_id
         self.extra_fields = extra_fields or {}
         self._previous_corr_id: Optional[str] = None
-        self._previous_extra_fields: Dict[str, Any] = {}
     
     def __enter__(self) -> 'LogContext':
-        """Enter context and set correlation ID and extra fields."""
-        # Save previous state
+        """Enter context and set correlation ID."""
         self._previous_corr_id = get_correlation_id()
-        self._previous_extra_fields = get_extra_fields().copy()
-        
-        # Set new values
         if self.correlation_id:
             set_correlation_id(self.correlation_id)
-        if self.extra_fields:
-            set_extra_fields(self.extra_fields)
-        
         return self
     
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Exit context and restore previous correlation ID and extra fields."""
-        # Restore previous state
-        if self._previous_corr_id is not None:
+        """Exit context and restore previous correlation ID."""
+        if self._previous_corr_id:
             set_correlation_id(self._previous_corr_id)
         elif self.correlation_id:
             set_correlation_id(None)
-        
-        if self._previous_extra_fields:
-            set_extra_fields(self._previous_extra_fields)
-        elif self.extra_fields:
-            set_extra_fields({})
 
 
 __all__ = [
